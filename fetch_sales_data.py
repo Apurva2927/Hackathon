@@ -10,7 +10,7 @@ def fetch_sales_data():
         conn = psycopg2.connect(conn_string)
         cursor = conn.cursor()
         
-        tables_to_check = ['leads', 'objections', 'followups', 'deals']
+        tables_to_check = ['leads', 'objections', 'followups']
         
         for table in tables_to_check:
             print(f"\n--- Table: {table} ---")

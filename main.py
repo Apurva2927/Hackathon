@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect
 from database import engine, get_db, Base
-from models import Lead
-from llm import score_lead_with_llm
+from models import Lead, Followup
+from llm import score_lead_with_llm, generate_followup_email_with_llm
 
 # Create tables on startup
 Base.metadata.create_all(bind=engine)
@@ -20,19 +20,43 @@ Base.metadata.create_all(bind=engine)
 
 def _ensure_schema_compatibility() -> None:
     inspector = inspect(engine)
-    if "leads" not in inspector.get_table_names():
-        return
+    table_names = set(inspector.get_table_names())
 
-    existing_columns = {col["name"] for col in inspector.get_columns("leads")}
     ddl = []
-    if "llm_model" not in existing_columns:
-        ddl.append("ALTER TABLE leads ADD COLUMN llm_model VARCHAR(120)")
-    if "llm_confidence" not in existing_columns:
-        ddl.append("ALTER TABLE leads ADD COLUMN llm_confidence DOUBLE PRECISION")
-    if "llm_token_usage" not in existing_columns:
-        ddl.append("ALTER TABLE leads ADD COLUMN llm_token_usage INTEGER")
-    if "llm_cached" not in existing_columns:
-        ddl.append("ALTER TABLE leads ADD COLUMN llm_cached BOOLEAN NOT NULL DEFAULT false")
+
+    if "leads" in table_names:
+        existing_columns = {col["name"] for col in inspector.get_columns("leads")}
+        if "llm_model" not in existing_columns:
+            ddl.append("ALTER TABLE leads ADD COLUMN llm_model VARCHAR(120)")
+        if "llm_confidence" not in existing_columns:
+            ddl.append("ALTER TABLE leads ADD COLUMN llm_confidence DOUBLE PRECISION")
+        if "llm_token_usage" not in existing_columns:
+            ddl.append("ALTER TABLE leads ADD COLUMN llm_token_usage INTEGER")
+        if "llm_cached" not in existing_columns:
+            ddl.append("ALTER TABLE leads ADD COLUMN llm_cached BOOLEAN NOT NULL DEFAULT false")
+
+    if "followups" in table_names:
+        existing_columns = {col["name"] for col in inspector.get_columns("followups")}
+        if "lead_id" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN lead_id INTEGER")
+        if "lead_name" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN lead_name VARCHAR(255)")
+        if "company" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN company VARCHAR(255)")
+        if "description" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN description TEXT")
+        if "days_since_last_interaction" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN days_since_last_interaction INTEGER")
+        if "email_text" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN email_text TEXT")
+        if "llm_model" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN llm_model VARCHAR(120)")
+        if "llm_token_usage" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN llm_token_usage INTEGER")
+        if "llm_cached" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN llm_cached BOOLEAN NOT NULL DEFAULT false")
+        if "created_at" not in existing_columns:
+            ddl.append("ALTER TABLE followups ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT now()")
 
     if not ddl:
         return
@@ -94,6 +118,27 @@ class BulkLeadUploadResponse(BaseModel):
     errors: list[BulkUploadError]
 
 
+class FollowupGenerateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=255)
+    company: str = Field(min_length=2, max_length=255)
+    description: str = Field(min_length=5, max_length=4000)
+    days_since_last_interaction: int = Field(ge=0, le=3650)
+    lead_id: int | None = Field(default=None, ge=1)
+
+
+class FollowupResponse(BaseModel):
+    followup_id: int
+    lead_id: int | None
+    lead_name: str
+    company: str
+    days_since_last_interaction: int
+    email_text: str
+    llm_model: str | None
+    llm_token_usage: int | None
+    llm_cached: bool
+    created_at: str | None
+
+
 RATE_LIMIT_REQUESTS = max(1, int(os.getenv("RATE_LIMIT_REQUESTS", "60")))
 RATE_LIMIT_WINDOW_SECONDS = max(1, int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")))
 MAX_BULK_ROWS = max(1, int(os.getenv("MAX_BULK_UPLOAD_ROWS", "200")))
@@ -113,6 +158,21 @@ def _serialize_lead(lead: Lead) -> LeadResponse:
         llm_token_usage=lead.llm_token_usage,
         llm_cached=bool(lead.llm_cached),
         created_at=lead.created_at.isoformat() if lead.created_at else None,
+    )
+
+
+def _serialize_followup(followup: Followup) -> FollowupResponse:
+    return FollowupResponse(
+        followup_id=followup.id,
+        lead_id=followup.lead_id,
+        lead_name=followup.lead_name,
+        company=followup.company,
+        days_since_last_interaction=followup.days_since_last_interaction,
+        email_text=followup.email_text,
+        llm_model=followup.llm_model,
+        llm_token_usage=followup.llm_token_usage,
+        llm_cached=bool(followup.llm_cached),
+        created_at=followup.created_at.isoformat() if followup.created_at else None,
     )
 
 
@@ -312,6 +372,74 @@ async def bulk_upload_leads(
         leads=leads,
         errors=errors,
     )
+
+
+@app.post("/followups/generate", response_model=FollowupResponse)
+async def generate_followup(
+    payload: FollowupGenerateRequest,
+    request: Request,
+    _: None = Depends(require_api_key),
+    db: Session = Depends(get_db),
+):
+    """Generate a personalized follow-up email and persist it."""
+    request_id = getattr(request.state, "request_id", "n/a")
+
+    result = generate_followup_email_with_llm(
+        name=payload.name,
+        company=payload.company,
+        description=payload.description,
+        days_since_last_interaction=payload.days_since_last_interaction,
+        request_id=request_id,
+    )
+
+    followup = Followup(
+        prospect=payload.name,
+        last_interaction=f"{payload.days_since_last_interaction} days ago",
+        days_since=payload.days_since_last_interaction,
+        email=result["email_text"],
+        lead_id=payload.lead_id,
+        lead_name=payload.name,
+        company=payload.company,
+        description=payload.description,
+        days_since_last_interaction=payload.days_since_last_interaction,
+        email_text=result["email_text"],
+        llm_model=result.get("model"),
+        llm_token_usage=result.get("token_usage"),
+        llm_cached=bool(result.get("cached", False)),
+    )
+    db.add(followup)
+    db.commit()
+    db.refresh(followup)
+
+    _log(
+        logging.INFO,
+        "followup_generated",
+        request_id=request_id,
+        followup_id=followup.id,
+        lead_id=followup.lead_id,
+    )
+    return _serialize_followup(followup)
+
+
+@app.get("/followups", response_model=list[FollowupResponse])
+async def list_followups(
+    _: None = Depends(require_api_key),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    followups = (
+        db.query(Followup)
+        .filter(Followup.lead_name.isnot(None))
+        .filter(Followup.company.isnot(None))
+        .filter(Followup.days_since_last_interaction.isnot(None))
+        .filter(Followup.email_text.isnot(None))
+        .order_by(Followup.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [_serialize_followup(item) for item in followups]
 
 
 @app.get("/leads", response_model=PaginatedLeadsResponse)

@@ -42,6 +42,7 @@ Score: <integer 1-10>
 Reason: <one short sentence citing the strongest signal>"""
 
 
+
 @dataclass(frozen=True)
 class LLMConfig:
     api_key: str
@@ -164,6 +165,21 @@ def _neutral_result(reason: str, model: str, cached: bool = False) -> dict[str, 
     }
 
 
+def _fallback_followup_email(name: str, company: str, days_since_last_interaction: int) -> str:
+    return (
+        f"Subject: Quick follow-up from Bug Slayers\n\n"
+        f"Hi {name},\n\n"
+        f"I wanted to quickly follow up regarding our previous conversation about {company}. "
+        f"It has been {days_since_last_interaction} days since we last connected, and I wanted to check "
+        f"if this is still a priority for your team.\n\n"
+        "If helpful, I can share a short plan for next steps and a quick demo focused on your use case.\n\n"
+        "Best regards,\n"
+        "Bug Slayers Team"
+    )
+
+
+
+
 def score_lead_with_llm(name: str, company: str, description: str, request_id: str | None = None) -> dict[str, Any]:
     """
     Call Groq LLM to score a lead 1-10 with a one-line reason.
@@ -234,6 +250,85 @@ def score_lead_with_llm(name: str, company: str, description: str, request_id: s
     if last_error:
         logger.error("llm_failed request_id=%s error=%s", request_id, last_error)
     return _neutral_result("LLM unavailable after retries. Assigned neutral score.", config.model)
+
+
+def generate_followup_email_with_llm(
+    name: str,
+    company: str,
+    description: str,
+    days_since_last_interaction: int,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Generate a personalized follow-up email and return metadata."""
+    config = _get_config()
+    client = _get_client(config)
+
+    system_prompt = (
+        "You are an expert B2B sales assistant. "
+        "Write a concise, personalized follow-up email that sounds human and professional."
+    )
+    user_prompt = (
+        "Generate a follow-up email using this context:\n"
+        f"Lead Name: {name}\n"
+        f"Company: {company}\n"
+        f"Lead Context: {description}\n"
+        f"Days Since Last Interaction: {days_since_last_interaction}\n\n"
+        "Requirements:\n"
+        "- Include a clear subject line on first line (start with 'Subject:').\n"
+        "- Keep under 170 words.\n"
+        "- Mention the company context naturally.\n"
+        "- Include one polite call to action.\n"
+        "- Return plain text only."
+    )
+
+    started = time.time()
+    last_error = None
+    for attempt in range(1, config.max_retries + 1):
+        if time.time() - started > config.total_timeout_seconds:
+            break
+        try:
+            chat_completion = client.chat.completions.create(
+                model=config.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=min(0.7, max(0.2, config.temperature + 0.2)),
+                max_tokens=max(config.max_tokens, 220),
+            )
+            email_text = (chat_completion.choices[0].message.content or "").strip()
+            if not email_text:
+                raise RuntimeError("Empty email response from model")
+
+            token_usage = getattr(getattr(chat_completion, "usage", None), "total_tokens", None)
+            return {
+                "email_text": email_text,
+                "model": config.model,
+                "token_usage": token_usage,
+                "cached": False,
+            }
+        except Exception as exc:
+            last_error = str(exc)
+            logger.warning(
+                "followup_llm_attempt_failed request_id=%s attempt=%s error=%s",
+                request_id,
+                attempt,
+                last_error,
+            )
+            if attempt < config.max_retries:
+                time.sleep(config.retry_backoff_seconds * attempt)
+
+    if last_error:
+        logger.error("followup_llm_failed request_id=%s error=%s", request_id, last_error)
+
+    return {
+        "email_text": _fallback_followup_email(name, company, days_since_last_interaction),
+        "model": config.model,
+        "token_usage": None,
+        "cached": False,
+    }
+
+
 
 
 def _parse_score(response_text: str) -> dict:

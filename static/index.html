@@ -1,753 +1,111 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Lead Scorer · Bug Slayers</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<title>Lead Scorer</title>
 <style>
-  :root {
-    --bg-0: #07091a;
-    --bg-1: #0d1224;
-    --panel: rgba(20, 26, 50, 0.72);
-    --panel-solid: #141a32;
-    --border: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.14);
-    --text: #eef1ff;
-    --text-dim: #aeb6d6;
-    --muted: #6f78a0;
-    --accent: #7c5cff;
-    --accent-2: #22d3ee;
-    --accent-3: #f472b6;
-    --good: #34d399;
-    --warn: #fbbf24;
-    --bad: #f87171;
-    --shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.6);
-  }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    margin: 0;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    color: var(--text);
-    background: var(--bg-0);
-    overflow-x: hidden;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
-  /* Animated gradient backdrop */
-  .backdrop {
-    position: fixed; inset: 0; z-index: -1;
-    background:
-      radial-gradient(900px 600px at 12% -10%, rgba(124, 92, 255, 0.35), transparent 60%),
-      radial-gradient(800px 500px at 100% 10%, rgba(34, 211, 238, 0.22), transparent 55%),
-      radial-gradient(700px 700px at 50% 100%, rgba(244, 114, 182, 0.16), transparent 60%),
-      var(--bg-0);
-  }
-  .backdrop::before {
-    content: ""; position: absolute; inset: 0;
-    background-image:
-      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
-    background-size: 48px 48px;
-    mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
-  }
-
-  .app { max-width: 1280px; margin: 0 auto; padding: 28px 32px 64px; }
-
-  /* Header */
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding-bottom: 28px;
-  }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .logo {
-    width: 44px; height: 44px; border-radius: 12px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    display: grid; place-items: center;
-    box-shadow: 0 8px 24px rgba(124, 92, 255, 0.4);
-    position: relative; overflow: hidden;
-  }
-  .logo::after {
-    content: ""; position: absolute; inset: 0;
-    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.4), transparent 50%);
-  }
-  .logo svg { width: 22px; height: 22px; color: white; position: relative; z-index: 1; }
-  .brand-text h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
-  .brand-text .sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-  .header-actions { display: flex; align-items: center; gap: 10px; }
-  .pill-link {
-    text-decoration: none; color: var(--text-dim);
-    font-size: 13px; font-weight: 500;
-    padding: 8px 14px; border-radius: 999px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,.02);
-    transition: all .15s;
-  }
-  .pill-link:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255,255,255,.05); }
-
-  /* Stats row */
-  .stats {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 14px; margin-bottom: 24px;
-  }
-  @media (max-width: 800px) { .stats { grid-template-columns: repeat(2, 1fr); } }
-  .stat {
-    background: var(--panel);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 18px 20px;
-    position: relative; overflow: hidden;
-  }
-  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
-  .stat-value { font-size: 28px; font-weight: 700; margin-top: 6px; letter-spacing: -0.02em; }
-  .stat-value .unit { font-size: 14px; font-weight: 500; color: var(--text-dim); margin-left: 4px; }
-  .stat-trend { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
-  .stat-icon {
-    position: absolute; top: 16px; right: 16px;
-    width: 32px; height: 32px; border-radius: 10px;
-    display: grid; place-items: center; opacity: .7;
-  }
-  .stat-icon svg { width: 16px; height: 16px; }
-
-  /* Main grid */
-  .grid {
-    display: grid; grid-template-columns: 400px 1fr;
-    gap: 20px; align-items: start;
-  }
-  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-
-  .card {
-    background: var(--panel);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    padding: 22px;
-    box-shadow: var(--shadow);
-  }
-  .card-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 16px;
-  }
-  .card-header h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
-  .card-header .meta { font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
-
-  /* Form */
-  label {
-    display: block; font-size: 11px; font-weight: 600;
-    color: var(--text-dim); margin: 14px 0 6px;
-    text-transform: uppercase; letter-spacing: .06em;
-  }
-  label:first-of-type { margin-top: 4px; }
-  input, textarea {
-    width: 100%; background: rgba(7, 9, 26, 0.6);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 11px 13px; font-size: 14px;
-    outline: none; font-family: inherit;
-    transition: all .15s;
-  }
-  input::placeholder, textarea::placeholder { color: #4d5675; }
-  input:focus, textarea:focus {
-    border-color: var(--accent);
-    background: rgba(7, 9, 26, 0.9);
-    box-shadow: 0 0 0 3px rgba(124, 92, 255, .18);
-  }
-  textarea { min-height: 110px; resize: vertical; line-height: 1.5; }
-
-  .btn {
-    width: 100%; margin-top: 18px;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-    color: white; border: 0; padding: 12px 16px;
-    border-radius: 11px; font-weight: 600; font-size: 14px;
-    cursor: pointer; font-family: inherit;
-    box-shadow: 0 6px 20px rgba(124, 92, 255, 0.35);
-    transition: transform .08s, box-shadow .15s, opacity .15s;
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  }
-  .btn:hover { box-shadow: 0 10px 28px rgba(124, 92, 255, 0.5); }
-  .btn:active { transform: translateY(1px); }
-  .btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
-  .btn.ghost {
-    background: transparent; color: var(--text-dim);
-    border: 1px solid var(--border); box-shadow: none;
-    width: auto; margin: 0; padding: 8px 14px; font-size: 13px;
-  }
-  .btn.ghost:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255,255,255,.04); }
-
-  .split-actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 12px;
-    flex-wrap: wrap;
-  }
-
-  .upload-box {
-    margin-top: 12px;
-    border: 1px dashed var(--border-strong);
-    border-radius: 12px;
-    padding: 12px;
-    background: rgba(7, 9, 26, 0.35);
-  }
-
-  .upload-box p {
-    margin: 0 0 8px;
-    color: var(--text-dim);
-    font-size: 12px;
-  }
-
-  .upload-hint {
-    margin-top: 8px;
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.4;
-  }
-
-  .spinner {
-    width: 14px; height: 14px;
-    border: 2px solid rgba(255,255,255,.3);
-    border-top-color: white; border-radius: 50%;
-    animation: spin .7s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Toolbar */
-  .toolbar {
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 14px; flex-wrap: wrap;
-  }
-  .search-wrap { flex: 1; min-width: 200px; position: relative; }
-  .search-wrap svg {
-    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-    width: 14px; height: 14px; color: var(--muted); pointer-events: none;
-  }
-  .search-wrap input { padding-left: 34px; }
-  .sort-tabs { display: flex; gap: 4px; background: rgba(7,9,26,.5); padding: 3px; border-radius: 10px; border: 1px solid var(--border); }
-  .sort-tab {
-    background: transparent; border: 0; color: var(--text-dim);
-    padding: 6px 12px; font-size: 12px; font-weight: 500;
-    border-radius: 7px; cursor: pointer; font-family: inherit;
-    transition: all .15s;
-  }
-  .sort-tab.active { background: rgba(255,255,255,.06); color: var(--text); }
-  .sort-tab:hover:not(.active) { color: var(--text); }
-
-  /* Lead list */
-  .leads { display: flex; flex-direction: column; gap: 10px; }
-  .lead {
-    display: grid;
-    grid-template-columns: 56px 1fr auto;
-    gap: 14px; align-items: start;
-    padding: 14px 16px;
-    background: rgba(7, 9, 26, 0.4);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    transition: all .15s;
-    animation: slideIn .35s ease both;
-  }
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .lead:hover { border-color: var(--border-strong); background: rgba(7, 9, 26, 0.7); }
-
-  .score-ring {
-    width: 56px; height: 56px; position: relative;
-    display: grid; place-items: center;
-  }
-  .score-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
-  .score-ring .track { fill: none; stroke: rgba(255,255,255,.06); stroke-width: 4; }
-  .score-ring .arc { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dasharray .6s; }
-  .score-ring .num { font-size: 16px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-
-  .lead-body { min-width: 0; }
-  .lead-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .lead-title .name { font-weight: 600; font-size: 14px; }
-  .lead-title .company { font-size: 13px; color: var(--text-dim); }
-  .lead-title .company::before { content: "·"; margin-right: 8px; color: var(--muted); }
-  .lead-reason {
-    color: var(--text-dim); font-size: 12.5px; line-height: 1.55;
-    margin-top: 6px; max-width: 640px;
-  }
-  .lead-meta {
-    text-align: right; font-size: 11px; color: var(--muted);
-    font-family: 'JetBrains Mono', monospace; white-space: nowrap;
-    padding-top: 4px;
-  }
-  .lead-tag {
-    display: inline-block; font-size: 10px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .06em;
-    padding: 2px 8px; border-radius: 999px; margin-left: 6px;
-    border: 1px solid currentColor;
-  }
-
-  .pager {
-    margin-top: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    border-top: 1px solid var(--border);
-    padding-top: 12px;
-  }
-
-  .pager-meta {
-    color: var(--text-dim);
-    font-size: 12px;
-  }
-
-  .pager-controls {
-    display: flex;
-    gap: 8px;
-  }
-  .tag-good { color: var(--good); }
-  .tag-mid { color: var(--warn); }
-  .tag-bad { color: var(--bad); }
-
-  .empty {
-    text-align: center; padding: 48px 24px; color: var(--muted);
-  }
-  .empty .ico {
-    width: 48px; height: 48px; margin: 0 auto 12px;
-    border-radius: 14px; background: rgba(255,255,255,.04);
-    display: grid; place-items: center;
-  }
-  .empty .ico svg { width: 22px; height: 22px; color: var(--text-dim); }
-  .empty h3 { color: var(--text); font-size: 14px; font-weight: 600; margin: 0 0 4px; }
-  .empty p { margin: 0; font-size: 13px; }
-
-  /* Toast */
-  .toast {
-    position: fixed; right: 24px; bottom: 24px; z-index: 50;
-    background: rgba(20, 26, 50, 0.95);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--border-strong);
-    color: var(--text);
-    padding: 12px 16px; border-radius: 12px; font-size: 13px;
-    box-shadow: 0 20px 50px rgba(0,0,0,.5);
-    display: flex; align-items: center; gap: 10px;
-    opacity: 0; transform: translateY(12px) scale(.96);
-    transition: all .25s cubic-bezier(.34,1.56,.64,1);
-    pointer-events: none;
-  }
-  .toast.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-  .toast .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
-  .toast.error .dot { background: var(--bad); }
-
-  /* Footer */
-  footer {
-    margin-top: 32px; text-align: center;
-    font-size: 12px; color: var(--muted);
-  }
-  footer code {
-    font-family: 'JetBrains Mono', monospace;
-    background: rgba(255,255,255,.04); padding: 2px 6px;
-    border-radius: 5px; font-size: 11px;
-  }
+:root{--bg:#0a1022;--panel:#111933;--line:#2a355f;--text:#eef2ff;--muted:#aeb9dd;--accent:#4f8cff;--good:#34d399;--warn:#fbbf24;--bad:#f87171}
+*{box-sizing:border-box}body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:radial-gradient(circle at 10% 0%,#1a2560,transparent 40%),radial-gradient(circle at 90% 0%,#164e63,transparent 35%),var(--bg);color:var(--text)}
+.app{max-width:1200px;margin:0 auto;padding:24px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.title{font-size:24px;font-weight:700}.sub{font-size:13px;color:var(--muted)}
+.links a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:7px 12px;border-radius:999px;margin-left:8px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase}.stat .v{font-size:24px;font-weight:700;margin-top:4px}
+.grid{display:grid;grid-template-columns:370px 1fr;gap:14px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;margin:10px 0 4px}input,textarea{width:100%;background:#0b1430;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px}textarea{min-height:90px}
+button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 12px;cursor:pointer;font-weight:600}button:disabled{opacity:.6;cursor:not-allowed}.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap}.locked{border:1px dashed var(--line);border-radius:10px;padding:12px;color:var(--muted)}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}.toolbar input{max-width:320px}
+.lead{display:grid;grid-template-columns:54px 1fr auto;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:#0b1430}
+.score{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;border:3px solid #334155;font-weight:700}.hot{border-color:var(--good)}.warm{border-color:var(--warn)}.cold{border-color:var(--bad)}
+.meta{font-size:12px;color:var(--muted)}.tag{font-size:10px;border:1px solid currentColor;border-radius:999px;padding:2px 6px;margin-left:6px}.tag-hot{color:var(--good)}.tag-warm{color:var(--warn)}.tag-cold{color:var(--bad)}
+.follow{border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px}.toast{position:fixed;right:18px;bottom:18px;background:#132146;border:1px solid var(--line);padding:10px 12px;border-radius:8px;display:none}.toast.show{display:block}
+@media (max-width:900px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
 </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client"
-  }
-}
-</script>
 </head>
 <body>
-<div class="backdrop"></div>
-<div id="root"></div>
+<div class="app">
+  <header>
+    <div>
+      <div class="title">Lead Scorer</div>
+      <div class="sub">AI lead qualification - Bug Slayers</div>
+    </div>
+    <div class="links"><a href="/docs" target="_blank" rel="noreferrer">API Docs</a><a href="/leads" target="_blank" rel="noreferrer">Raw JSON</a></div>
+  </header>
 
-<script type="module">
-import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { createRoot } from "react-dom/client";
+  <div class="stats" id="stats"></div>
 
-const h = React.createElement;
+  <div class="grid">
+    <div>
+      <section class="card">
+        <h3>Stage 1: Lead Scoring</h3>
+        <form id="leadForm">
+          <label>Name</label><input id="name" required />
+          <label>Company</label><input id="company" required />
+          <label>Description</label><textarea id="description" required></textarea>
+          <div class="row" style="margin-top:10px"><button id="scoreBtn" type="submit">Score with AI</button></div>
+        </form>
+        <hr style="border-color:var(--line);margin:14px 0">
+        <label>Bulk Upload (.xlsx/.csv)</label>
+        <input id="bulkFile" type="file" accept=".xlsx,.csv" />
+        <div class="row" style="margin-top:8px"><button class="ghost" id="bulkBtn" type="button" disabled>Upload and Score</button></div>
+      </section>
 
-const Icon = {
-  target: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("circle", { cx: 12, cy: 12, r: 10 }), h("circle", { cx: 12, cy: 12, r: 6 }), h("circle", { cx: 12, cy: 12, r: 2 })
-  ),
-  search: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("circle", { cx: 11, cy: 11, r: 7 }), h("path", { d: "m21 21-4.3-4.3" })
-  ),
-  refresh: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("path", { d: "M3 12a9 9 0 0 1 15-6.7L21 8" }), h("path", { d: "M21 3v5h-5" }),
-    h("path", { d: "M21 12a9 9 0 0 1-15 6.7L3 16" }), h("path", { d: "M3 21v-5h5" })
-  ),
-  sparkles: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("path", { d: "M9.94 14.06 8 20l-1.94-5.94L0 12l5.94-1.94L8 4l1.94 5.94L16 12z" }),
-    h("path", { d: "M19 4v4M19 16v4M21 6h-4M21 18h-4" })
-  ),
-  upload: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
-    h("polyline", { points: "17 8 12 3 7 8" }),
-    h("line", { x1: 12, y1: 3, x2: 12, y2: 15 })
-  ),
-  users: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }),
-    h("circle", { cx: 9, cy: 7, r: 4 }),
-    h("path", { d: "M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" })
-  ),
-  trend: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("polyline", { points: "22 7 13.5 15.5 8.5 10.5 2 17" }), h("polyline", { points: "16 7 22 7 22 13" })
-  ),
-  flame: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("path", { d: "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" })
-  ),
-  clock: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("circle", { cx: 12, cy: 12, r: 10 }), h("polyline", { points: "12 6 12 12 16 14" })
-  ),
-  inbox: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
-    h("polyline", { points: "22 12 16 12 14 15 10 15 8 12 2 12" }),
-    h("path", { d: "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" })
-  ),
-};
+      <section class="card" style="margin-top:12px">
+        <h3>Stage 2: Follow-up Email</h3>
+        <div id="locked" class="locked"><strong>Stage 2 is locked.</strong> Add at least one lead in Stage 1 to unlock this section.</div>
+        <form id="followForm" style="display:none">
+          <label>Lead Name</label><input id="fName" required />
+          <label>Company</label><input id="fCompany" required />
+          <label>Context</label><textarea id="fDesc" required></textarea>
+          <label>Days Since Last Interaction</label><input id="fDays" type="number" min="0" value="5" required />
+          <label>Lead ID (optional)</label><input id="fLeadId" type="number" min="1" />
+          <div class="row" style="margin-top:10px"><button id="fBtn" type="submit">Generate Follow-up</button></div>
+        </form>
+        <div id="fOut" class="follow" style="display:none"><pre id="fText" style="white-space:pre-wrap;margin:0"></pre></div>
+        <div id="fList"></div>
+      </section>
+    </div>
 
-const SCORE_MAX = 10;
-function tier(s) {
-  if (s == null) return { cls: "", color: "#475569", label: "—" };
-  if (s >= 7) return { cls: "tag-good", color: "var(--good)", label: "Hot" };
-  if (s >= 4) return { cls: "tag-mid", color: "var(--warn)", label: "Warm" };
-  return { cls: "tag-bad", color: "var(--bad)", label: "Cold" };
-}
-
-function timeAgo(iso) {
-  if (!iso) return "";
-  const d = new Date(iso); const s = (Date.now() - d.getTime()) / 1000;
-  if (s < 60) return "just now";
-  if (s < 3600) return Math.floor(s / 60) + "m ago";
-  if (s < 86400) return Math.floor(s / 3600) + "h ago";
-  return Math.floor(s / 86400) + "d ago";
-}
-
-function normalizeLead(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  return {
-    ...raw,
-    id: raw.id ?? raw.lead_id ?? null,
-  };
-}
-
-function ScoreRing({ score }) {
-  const s = score ?? 0;
-  const r = 24, c = 2 * Math.PI * r;
-  const offset = c - (Math.max(0, Math.min(SCORE_MAX, s)) / SCORE_MAX) * c;
-  const t = tier(score);
-  return h("div", { className: "score-ring" },
-    h("svg", { width: 56, height: 56, viewBox: "0 0 56 56" },
-      h("circle", { className: "track", cx: 28, cy: 28, r }),
-      h("circle", {
-        className: "arc", cx: 28, cy: 28, r,
-        stroke: t.color,
-        strokeDasharray: `${c - offset} ${c}`,
-      })
-    ),
-    h("span", { className: "num", style: { color: t.color } }, score ?? "—")
-  );
-}
-
-function Stat({ label, value, unit, icon, color, trend }) {
-  return h("div", { className: "stat" },
-    h("div", { className: "stat-label" }, label),
-    h("div", { className: "stat-value" }, value, unit && h("span", { className: "unit" }, unit)),
-    trend && h("div", { className: "stat-trend" }, trend),
-    h("div", { className: "stat-icon", style: { color, background: `${color}1a` } }, icon)
-  );
-}
-
-function LeadForm({ onCreated, notify }) {
-  const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
-  const [description, setDescription] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [uploadBusy, setUploadBusy] = useState(false);
-  const [file, setFile] = useState(null);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!name.trim() || !company.trim() || !description.trim()) return;
-    setBusy(true);
-    try {
-      const payload = { name: name.trim(), company: company.trim(), description: description.trim() };
-      const r = await fetch("/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) throw new Error(await r.text() || "HTTP " + r.status);
-      const data = await r.json();
-      notify(`Scored ${data.name} → ${data.score}`);
-      setName(""); setCompany(""); setDescription("");
-      onCreated();
-    } catch (err) {
-      notify("Error: " + err.message, true);
-    } finally { setBusy(false); }
-  };
-
-  return h("section", { className: "card" },
-    h("div", { className: "card-header" },
-      h("h2", null, "New Lead"),
-      h("span", { className: "meta" }, "POST /leads")
-    ),
-    h("form", { onSubmit: submit },
-      h("label", null, "Contact name"),
-      h("input", { value: name, onChange: e => setName(e.target.value), placeholder: "Jane Doe", required: true }),
-      h("label", null, "Company"),
-      h("input", { value: company, onChange: e => setCompany(e.target.value), placeholder: "Acme Corp", required: true }),
-      h("label", null, "Description"),
-      h("textarea", {
-        value: description,
-        onChange: e => setDescription(e.target.value),
-        placeholder: "Mid-market SaaS, ~120 employees, evaluating CRM tools, decision in Q2…",
-        required: true,
-      }),
-      h("button", { type: "submit", className: "btn", disabled: busy },
-        busy ? h("span", { className: "spinner" }) : h(Icon.sparkles),
-        busy ? "Scoring with AI…" : "Score with AI"
-      ),
-      h("div", { className: "upload-box" },
-        h("p", null, "Bulk upload leads (.xlsx or .csv)"),
-        h("input", {
-          type: "file",
-          accept: ".xlsx,.csv",
-          onChange: e => setFile(e.target.files?.[0] || null),
-        }),
-        h("div", { className: "split-actions" },
-          h("button", {
-            type: "button",
-            className: "btn ghost",
-            disabled: uploadBusy || !file,
-            onClick: async () => {
-              if (!file) return;
-              setUploadBusy(true);
-              try {
-                const form = new FormData();
-                form.append("file", file);
-                const r = await fetch("/leads/bulk-upload", {
-                  method: "POST",
-                  body: form,
-                });
-                const data = await r.json();
-                if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
-
-                notify(`Bulk upload complete: ${data.created_count}/${data.total_rows} created`);
-                if ((data.failed_count || 0) > 0) {
-                  const first = data.errors?.[0];
-                  notify(`Some rows failed${first ? ` (row ${first.row})` : ""}`, true);
-                }
-                setFile(null);
-                onCreated();
-              } catch (err) {
-                notify("Upload error: " + err.message, true);
-              } finally {
-                setUploadBusy(false);
-              }
-            },
-          },
-            uploadBusy ? h("span", { className: "spinner" }) : h(Icon.upload),
-            uploadBusy ? "Uploading…" : "Upload & Score"
-          )
-        ),
-        h("div", { className: "upload-hint" }, "Required columns: name, company, description")
-      )
-    )
-  );
-}
-
-function LeadRow({ lead }) {
-  const t = tier(lead.score);
-  return h("div", { className: "lead" },
-    h(ScoreRing, { score: lead.score }),
-    h("div", { className: "lead-body" },
-      h("div", { className: "lead-title" },
-        h("span", { className: "name" }, lead.name),
-        h("span", { className: "company" }, lead.company),
-        h("span", { className: "lead-tag " + t.cls }, t.label)
-      ),
-      lead.score_reason && h("div", { className: "lead-reason" }, lead.score_reason)
-    ),
-    h("div", { className: "lead-meta" }, timeAgo(lead.created_at))
-  );
-}
-
-function LeadList({ leads, query, setQuery, sort, setSort, onRefresh, loading, error, total, limit, offset, onPrev, onNext }) {
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let arr = !q ? leads : leads.filter(l =>
-      (l.name || "").toLowerCase().includes(q) ||
-      (l.company || "").toLowerCase().includes(q) ||
-      (l.description || "").toLowerCase().includes(q)
-    );
-    arr = [...arr];
-    if (sort === "score") arr.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-    else if (sort === "recent") arr.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-    else if (sort === "name") arr.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    return arr;
-  }, [leads, query, sort]);
-
-  let body;
-  if (loading) body = h("div", { className: "empty" },
-    h("div", { className: "ico" }, h("span", { className: "spinner", style: { borderTopColor: "var(--text)" } })),
-    h("h3", null, "Loading leads"),
-    h("p", null, "Fetching from the database…")
-  );
-  else if (error) body = h("div", { className: "empty" },
-    h("h3", null, "Couldn't load leads"),
-    h("p", null, error)
-  );
-  else if (!filtered.length) body = h("div", { className: "empty" },
-    h("div", { className: "ico" }, h(Icon.inbox)),
-    h("h3", null, query ? "No matches" : "No leads yet"),
-    h("p", null, query ? "Try a different search term." : "Add your first lead on the left to get an AI score.")
-  );
-  else body = h("div", { className: "leads" }, filtered.map(l => h(LeadRow, { key: l.id, lead: l })));
-
-  const start = total === 0 ? 0 : offset + 1;
-  const end = Math.min(offset + limit, total);
-
-  return h("section", { className: "card" },
-    h("div", { className: "card-header" },
-      h("h2", null, "Pipeline"),
-      h("span", { className: "meta" }, `${filtered.length} ${filtered.length === 1 ? "lead" : "leads"}`)
-    ),
-    h("div", { className: "toolbar" },
-      h("div", { className: "search-wrap" },
-        h(Icon.search),
-        h("input", {
-          value: query, onChange: e => setQuery(e.target.value),
-          placeholder: "Search name, company, or note…",
-        })
-      ),
-      h("div", { className: "sort-tabs" },
-        ["score", "recent", "name"].map(k =>
-          h("button", {
-            key: k, className: "sort-tab " + (sort === k ? "active" : ""),
-            onClick: () => setSort(k),
-          }, k[0].toUpperCase() + k.slice(1))
-        )
-      ),
-      h("button", { className: "btn ghost", onClick: onRefresh },
-        h(Icon.refresh), " Refresh"
-      )
-    ),
-    body,
-    h("div", { className: "pager" },
-      h("div", { className: "pager-meta" }, `Showing ${start}-${end} of ${total}`),
-      h("div", { className: "pager-controls" },
-        h("button", { className: "btn ghost", onClick: onPrev, disabled: loading || offset <= 0 }, "Previous"),
-        h("button", { className: "btn ghost", onClick: onNext, disabled: loading || (offset + limit) >= total }, "Next")
-      )
-    )
-  );
-}
-
-function App() {
-  const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("score");
-  const [toast, setToast] = useState(null);
-  const [limit] = useState(20);
-  const [offset, setOffset] = useState(0);
-  const [total, setTotal] = useState(0);
-
-  const notify = useCallback((msg, error = false) => {
-    setToast({ msg, error });
-    setTimeout(() => setToast(null), 2800);
-  }, []);
-
-  const load = useCallback(async (nextOffset = 0) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await fetch(`/leads?limit=${limit}&offset=${nextOffset}`);
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const data = await r.json();
-      const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
-      setLeads(items.map(normalizeLead).filter(Boolean));
-      setTotal(data?.total ?? items.length);
-      setOffset(nextOffset);
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
-  }, [limit]);
-
-  useEffect(() => { load(0); }, [load]);
-
-  const stats = useMemo(() => {
-    const total = leads.length;
-    const scored = leads.filter(l => l.score != null);
-    const avg = scored.length ? (scored.reduce((s, l) => s + l.score, 0) / scored.length).toFixed(1) : "0";
-    const hot = leads.filter(l => (l.score ?? 0) >= 7).length;
-    const today = leads.filter(l => {
-      if (!l.created_at) return false;
-      return (Date.now() - new Date(l.created_at).getTime()) < 86400000;
-    }).length;
-    return { total, avg, hot, today };
-  }, [leads]);
-
-  return h(React.Fragment, null,
-    h("div", { className: "app" },
-      h("header", null,
-        h("div", { className: "brand" },
-          h("div", { className: "logo" }, h(Icon.target)),
-          h("div", { className: "brand-text" },
-            h("h1", null, "Lead Scorer"),
-            h("div", { className: "sub" }, "AI lead qualification · Bug Slayers")
-          )
-        ),
-        h("div", { className: "header-actions" },
-          h("a", { className: "pill-link", href: "/docs", target: "_blank" }, "API Docs"),
-          h("a", { className: "pill-link", href: "/leads", target: "_blank" }, "Raw JSON")
-        )
-      ),
-
-      h("div", { className: "stats" },
-        h(Stat, { label: "Total leads", value: stats.total, icon: h(Icon.users), color: "#7c5cff", trend: "all-time" }),
-        h(Stat, { label: "Average score", value: stats.avg, unit: "/10", icon: h(Icon.trend), color: "#22d3ee", trend: "across pipeline" }),
-        h(Stat, { label: "Hot leads", value: stats.hot, icon: h(Icon.flame), color: "#f87171", trend: "score ≥ 7" }),
-        h(Stat, { label: "Added today", value: stats.today, icon: h(Icon.clock), color: "#34d399", trend: "last 24h" })
-      ),
-
-      h("div", { className: "grid" },
-        h(LeadForm, { onCreated: () => load(0), notify }),
-        h(LeadList, {
-          leads,
-          query,
-          setQuery,
-          sort,
-          setSort,
-          onRefresh: () => load(offset),
-          loading,
-          error,
-          total,
-          limit,
-          offset,
-          onPrev: () => load(Math.max(0, offset - limit)),
-          onNext: () => load(offset + limit),
-        })
-      ),
-
-      h("footer", null,
-        "Built by ", h("strong", null, "Bug Slayers"), " · Apurva Gunjal & Kunal Singh · ",
-        h("code", null, "FastAPI"), " + ", h("code", null, "React"), " + ", h("code", null, "Groq")
-      )
-    ),
-    h("div", { className: "toast " + (toast ? "show " : "") + (toast?.error ? "error" : "") },
-      h("span", { className: "dot" }),
-      h("span", null, toast?.msg || "")
-    )
-  );
-}
-
-createRoot(document.getElementById("root")).render(h(App));
+    <section class="card">
+      <h3>Pipeline</h3>
+      <div class="toolbar">
+        <input id="search" placeholder="Search leads..." />
+        <button class="ghost" data-sort="score">Score</button>
+        <button class="ghost" data-sort="recent">Recent</button>
+        <button class="ghost" data-sort="name">Name</button>
+        <button class="ghost" id="refreshBtn">Refresh</button>
+      </div>
+      <div id="list"></div>
+      <div class="meta" id="pager"></div>
+      <div class="row" style="margin-top:8px"><button class="ghost" id="prevBtn">Previous</button><button class="ghost" id="nextBtn">Next</button></div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const state={leads:[],total:0,limit:20,offset:0,sort:'score',query:'',followups:[]};
+const $=(id)=>document.getElementById(id);
+const toast=(m,e=false)=>{const t=$('toast');t.textContent=m;t.style.color=e?'#fca5a5':'#e2e8f0';t.className='toast show';setTimeout(()=>t.className='toast',2500)};
+const esc=(s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const tier=(s)=>s==null?['-', '']:s>=7?['hot','tag-hot']:s>=4?['warm','tag-warm']:['cold','tag-cold'];
+const ago=(iso)=>{if(!iso)return'';const d=(Date.now()-new Date(iso).getTime())/1000;return d<60?'now':d<3600?Math.floor(d/60)+'m':d<86400?Math.floor(d/3600)+'h':Math.floor(d/86400)+'d';};
+function renderStats(){const scored=state.leads.filter(l=>l.score!=null);const avg=scored.length?(scored.reduce((a,b)=>a+b.score,0)/scored.length).toFixed(1):'0';const hot=state.leads.filter(l=>(l.score??0)>=7).length;const today=state.leads.filter(l=>l.created_at&&(Date.now()-new Date(l.created_at).getTime())<86400000).length;$('stats').innerHTML=`<div class="stat"><div class="k">Total Leads</div><div class="v">${state.leads.length}</div></div><div class="stat"><div class="k">Average Score</div><div class="v">${avg}/10</div></div><div class="stat"><div class="k">Hot Leads</div><div class="v">${hot}</div></div><div class="stat"><div class="k">Added Today</div><div class="v">${today}</div></div>`;}
+function renderLeads(){const q=state.query.toLowerCase().trim();let list=[...state.leads];if(q)list=list.filter(l=>(l.name||'').toLowerCase().includes(q)||(l.company||'').toLowerCase().includes(q)||(l.description||'').toLowerCase().includes(q));if(state.sort==='score')list.sort((a,b)=>(b.score??-1)-(a.score??-1));if(state.sort==='recent')list.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));if(state.sort==='name')list.sort((a,b)=>(a.name||'').localeCompare(b.name||''));$('list').innerHTML=list.length?list.map(l=>{const [klass,tag]=tier(l.score);return `<div class="lead"><div class="score ${klass}">${l.score??'-'}</div><div><div><strong>${esc(l.name)}</strong> <span class="meta">${esc(l.company)}</span> <span class="tag ${tag}">${klass?klass.toUpperCase():'-'}</span></div>${l.score_reason?`<div class="meta">${esc(l.score_reason)}</div>`:''}</div><div class="meta">${ago(l.created_at)}</div></div>`;}).join(''):'<div class="meta">No leads found.</div>';const s=state.total===0?0:state.offset+1;const e=Math.min(state.offset+state.limit,state.total);$('pager').textContent=`Showing ${s}-${e} of ${state.total}`;$('prevBtn').disabled=state.offset<=0;$('nextBtn').disabled=(state.offset+state.limit)>=state.total;}
+function renderFollowups(){const unlocked=state.leads.length>0;$('locked').style.display=unlocked?'none':'block';$('followForm').style.display=unlocked?'block':'none';const c=$('fList');if(!unlocked){c.innerHTML='';return;}c.innerHTML=state.followups.length?state.followups.map(f=>`<div class="follow"><strong>${esc(f.lead_name)}</strong> - ${esc(f.company)}<div class="meta">${esc(String(f.days_since_last_interaction??0))} days since contact</div><div class="meta">${esc((f.email_text||'').slice(0,160))}${(f.email_text||'').length>160?'...':''}</div></div>`).join(''):'<div class="meta">No follow-ups yet.</div>';}
+async function loadLeads(ofs=0){state.offset=ofs;const r=await fetch(`/leads?limit=${state.limit}&offset=${ofs}`);if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();const items=Array.isArray(d)?d:(Array.isArray(d.items)?d.items:[]);state.leads=items.map(x=>({...x,id:x.id??x.lead_id??null}));state.total=d.total??items.length;renderStats();renderLeads();renderFollowups();}
+async function loadFollowups(){const r=await fetch('/followups?limit=5&offset=0');if(!r.ok)return;const d=await r.json();state.followups=Array.isArray(d)?d:[];renderFollowups();}
+$('search').addEventListener('input',e=>{state.query=e.target.value;renderLeads();});
+document.querySelectorAll('[data-sort]').forEach(b=>b.addEventListener('click',()=>{state.sort=b.dataset.sort;renderLeads();}));
+$('refreshBtn').addEventListener('click',()=>loadLeads(state.offset).catch(e=>toast(e.message,true)));
+$('prevBtn').addEventListener('click',()=>loadLeads(Math.max(0,state.offset-state.limit)).catch(e=>toast(e.message,true)));
+$('nextBtn').addEventListener('click',()=>loadLeads(state.offset+state.limit).catch(e=>toast(e.message,true)));
+$('bulkFile').addEventListener('change',()=>{$('bulkBtn').disabled=!$('bulkFile').files[0];});
+$('bulkBtn').addEventListener('click',async()=>{const f=$('bulkFile').files[0];if(!f)return;const btn=$('bulkBtn');btn.disabled=true;btn.textContent='Uploading...';try{const form=new FormData();form.append('file',f);const r=await fetch('/leads/bulk-upload',{method:'POST',body:form});const d=await r.json();if(!r.ok)throw new Error(d?.error||`HTTP ${r.status}`);toast(`Bulk upload complete: ${d.created_count}/${d.total_rows} created`);$('bulkFile').value='';await loadLeads(0);}catch(e){toast('Upload error: '+e.message,true);}finally{btn.disabled=true;btn.textContent='Upload and Score';}});
+$('leadForm').addEventListener('submit',async(e)=>{e.preventDefault();const payload={name:$('name').value.trim(),company:$('company').value.trim(),description:$('description').value.trim()};if(!payload.name||!payload.company||!payload.description)return;const b=$('scoreBtn');b.disabled=true;b.textContent='Scoring...';try{const r=await fetch('/leads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw new Error(await r.text()||`HTTP ${r.status}`);const d=await r.json();toast(`Scored ${d.name} -> ${d.score}`);e.target.reset();await loadLeads(0);}catch(err){toast('Error: '+err.message,true);}finally{b.disabled=false;b.textContent='Score with AI';}});
+$('followForm').addEventListener('submit',async(e)=>{e.preventDefault();const payload={name:$('fName').value.trim(),company:$('fCompany').value.trim(),description:$('fDesc').value.trim(),days_since_last_interaction:Number($('fDays').value)||0};const lid=$('fLeadId').value.trim();if(lid)payload.lead_id=Number(lid);const b=$('fBtn');b.disabled=true;b.textContent='Generating...';try{const r=await fetch('/followups/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d?.error||`HTTP ${r.status}`);$('fText').textContent=d.email_text||'';$('fOut').style.display='block';toast(`Follow-up generated for ${d.lead_name}`);await loadFollowups();}catch(err){toast('Follow-up error: '+err.message,true);}finally{b.disabled=false;b.textContent='Generate Follow-up';}});
+loadLeads(0).then(loadFollowups).catch(e=>{toast(e.message,true);$('list').innerHTML='<div class="meta">Could not load leads.</div>';});
 </script>
 </body>
 </html>

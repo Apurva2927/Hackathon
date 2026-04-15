@@ -38,14 +38,6 @@ def setup_and_fetch():
                 email VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
-            CREATE TABLE IF NOT EXISTS deals (
-                id SERIAL PRIMARY KEY,
-                prospect VARCHAR(255),
-                conversation TEXT,
-                stage VARCHAR(50),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
         """)
         
         # 2. Insert dummy data if empty
@@ -61,15 +53,12 @@ def setup_and_fetch():
                 
                 INSERT INTO followups (prospect, last_interaction, days_since, email)
                 VALUES ('John Doe', CURRENT_TIMESTAMP, 2, 'john@acme.com');
-                
-                INSERT INTO deals (prospect, conversation, stage)
-                VALUES ('John Doe', 'Discussed pricing and AI capabilities.', 'Negotiation');
             """)
         
         conn.commit()
         
         # 3. Fetch data
-        tables = ['leads', 'objections', 'followups', 'deals']
+        tables = ['leads', 'objections', 'followups']
         for table in tables:
             print(f"\n--- Data from '{table}' ---")
             cursor.execute(f"SELECT * FROM {table};")
