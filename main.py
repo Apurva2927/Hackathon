@@ -3,7 +3,9 @@ import logging
 import os
 import time
 import uuid
-from fastapi import FastAPI, Depends, HTTPException, Request, Query, Header
+from io import BytesIO, StringIO
+import pandas as pd
+from fastapi import FastAPI, Depends, HTTPException, Request, Query, Header, UploadFile, File
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -79,8 +81,22 @@ class PaginatedLeadsResponse(BaseModel):
     offset: int
 
 
+class BulkUploadError(BaseModel):
+    row: int
+    error: str
+
+
+class BulkLeadUploadResponse(BaseModel):
+    total_rows: int
+    created_count: int
+    failed_count: int
+    leads: list[LeadResponse]
+    errors: list[BulkUploadError]
+
+
 RATE_LIMIT_REQUESTS = max(1, int(os.getenv("RATE_LIMIT_REQUESTS", "60")))
 RATE_LIMIT_WINDOW_SECONDS = max(1, int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")))
+MAX_BULK_ROWS = max(1, int(os.getenv("MAX_BULK_UPLOAD_ROWS", "200")))
 _rate_limit_store: dict[str, list[float]] = {}
 
 
@@ -106,6 +122,31 @@ def require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Ke
         return
     if x_api_key != expected_api_key:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _parse_lead_dataframe(file_name: str, content: bytes) -> pd.DataFrame:
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    lower_name = (file_name or "").lower()
+    if lower_name.endswith(".xlsx"):
+        df = pd.read_excel(BytesIO(content), engine="openpyxl")
+    elif lower_name.endswith(".csv"):
+        decoded = content.decode("utf-8-sig")
+        df = pd.read_csv(StringIO(decoded))
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use .xlsx or .csv")
+
+    if df.empty:
+        raise HTTPException(status_code=400, detail="No rows found in uploaded file")
+
+    df.columns = [str(col).strip().lower() for col in df.columns]
+    required = ["name", "company", "description"]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing)}")
+
+    return df[required]
 
 app = FastAPI(
     title="Lead Scorer API",
@@ -202,6 +243,75 @@ async def score_lead(
     db.refresh(lead)
     _log(logging.INFO, "lead_scored", request_id=request_id, lead_id=lead.id, score=lead.score)
     return _serialize_lead(lead)
+
+
+@app.post("/leads/bulk-upload", response_model=BulkLeadUploadResponse)
+async def bulk_upload_leads(
+    request: Request,
+    file: UploadFile = File(...),
+    _: None = Depends(require_api_key),
+    db: Session = Depends(get_db),
+):
+    """Upload multiple leads from Excel/CSV and score each row."""
+    request_id = getattr(request.state, "request_id", "n/a")
+    content = await file.read()
+    df = _parse_lead_dataframe(file.filename or "", content)
+
+    if len(df) > MAX_BULK_ROWS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many rows ({len(df)}). Maximum allowed is {MAX_BULK_ROWS}.",
+        )
+
+    leads: list[LeadResponse] = []
+    errors: list[BulkUploadError] = []
+
+    for idx, row in df.iterrows():
+        row_number = int(idx) + 2
+        raw_name = "" if pd.isna(row["name"]) else str(row["name"]).strip()
+        raw_company = "" if pd.isna(row["company"]) else str(row["company"]).strip()
+        raw_description = "" if pd.isna(row["description"]) else str(row["description"]).strip()
+
+        try:
+            payload = LeadCreate(name=raw_name, company=raw_company, description=raw_description)
+            result = score_lead_with_llm(
+                name=payload.name,
+                company=payload.company,
+                description=payload.description,
+                request_id=request_id,
+            )
+
+            lead = Lead(name=payload.name, company=payload.company, description=payload.description)
+            lead.score = result["score"]
+            lead.score_reason = result["reason"]
+            lead.llm_model = result.get("model")
+            lead.llm_confidence = result.get("confidence")
+            lead.llm_token_usage = result.get("token_usage")
+            lead.llm_cached = bool(result.get("cached", False))
+
+            db.add(lead)
+            db.commit()
+            db.refresh(lead)
+            leads.append(_serialize_lead(lead))
+        except Exception as exc:
+            db.rollback()
+            errors.append(BulkUploadError(row=row_number, error=str(exc)))
+
+    _log(
+        logging.INFO,
+        "bulk_upload_completed",
+        request_id=request_id,
+        total_rows=len(df),
+        created_count=len(leads),
+        failed_count=len(errors),
+    )
+    return BulkLeadUploadResponse(
+        total_rows=len(df),
+        created_count=len(leads),
+        failed_count=len(errors),
+        leads=leads,
+        errors=errors,
+    )
 
 
 @app.get("/leads", response_model=PaginatedLeadsResponse)

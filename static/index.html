@@ -181,6 +181,34 @@
   }
   .btn.ghost:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255,255,255,.04); }
 
+  .split-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .upload-box {
+    margin-top: 12px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 12px;
+    padding: 12px;
+    background: rgba(7, 9, 26, 0.35);
+  }
+
+  .upload-box p {
+    margin: 0 0 8px;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  .upload-hint {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
   .spinner {
     width: 14px; height: 14px;
     border: 2px solid rgba(255,255,255,.3);
@@ -257,6 +285,26 @@
     text-transform: uppercase; letter-spacing: .06em;
     padding: 2px 8px; border-radius: 999px; margin-left: 6px;
     border: 1px solid currentColor;
+  }
+
+  .pager {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  .pager-meta {
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  .pager-controls {
+    display: flex;
+    gap: 8px;
   }
   .tag-good { color: var(--good); }
   .tag-mid { color: var(--warn); }
@@ -337,6 +385,11 @@ const Icon = {
     h("path", { d: "M9.94 14.06 8 20l-1.94-5.94L0 12l5.94-1.94L8 4l1.94 5.94L16 12z" }),
     h("path", { d: "M19 4v4M19 16v4M21 6h-4M21 18h-4" })
   ),
+  upload: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
+    h("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
+    h("polyline", { points: "17 8 12 3 7 8" }),
+    h("line", { x1: 12, y1: 3, x2: 12, y2: 15 })
+  ),
   users: () => h("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
     h("path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }),
     h("circle", { cx: 9, cy: 7, r: 4 }),
@@ -414,6 +467,8 @@ function LeadForm({ onCreated, notify }) {
   const [company, setCompany] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [file, setFile] = useState(null);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -456,6 +511,51 @@ function LeadForm({ onCreated, notify }) {
       h("button", { type: "submit", className: "btn", disabled: busy },
         busy ? h("span", { className: "spinner" }) : h(Icon.sparkles),
         busy ? "Scoring with AI…" : "Score with AI"
+      ),
+      h("div", { className: "upload-box" },
+        h("p", null, "Bulk upload leads (.xlsx or .csv)"),
+        h("input", {
+          type: "file",
+          accept: ".xlsx,.csv",
+          onChange: e => setFile(e.target.files?.[0] || null),
+        }),
+        h("div", { className: "split-actions" },
+          h("button", {
+            type: "button",
+            className: "btn ghost",
+            disabled: uploadBusy || !file,
+            onClick: async () => {
+              if (!file) return;
+              setUploadBusy(true);
+              try {
+                const form = new FormData();
+                form.append("file", file);
+                const r = await fetch("/leads/bulk-upload", {
+                  method: "POST",
+                  body: form,
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+
+                notify(`Bulk upload complete: ${data.created_count}/${data.total_rows} created`);
+                if ((data.failed_count || 0) > 0) {
+                  const first = data.errors?.[0];
+                  notify(`Some rows failed${first ? ` (row ${first.row})` : ""}`, true);
+                }
+                setFile(null);
+                onCreated();
+              } catch (err) {
+                notify("Upload error: " + err.message, true);
+              } finally {
+                setUploadBusy(false);
+              }
+            },
+          },
+            uploadBusy ? h("span", { className: "spinner" }) : h(Icon.upload),
+            uploadBusy ? "Uploading…" : "Upload & Score"
+          )
+        ),
+        h("div", { className: "upload-hint" }, "Required columns: name, company, description")
       )
     )
   );
@@ -477,7 +577,7 @@ function LeadRow({ lead }) {
   );
 }
 
-function LeadList({ leads, query, setQuery, sort, setSort, onRefresh, loading, error }) {
+function LeadList({ leads, query, setQuery, sort, setSort, onRefresh, loading, error, total, limit, offset, onPrev, onNext }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let arr = !q ? leads : leads.filter(l =>
@@ -509,6 +609,9 @@ function LeadList({ leads, query, setQuery, sort, setSort, onRefresh, loading, e
   );
   else body = h("div", { className: "leads" }, filtered.map(l => h(LeadRow, { key: l.id, lead: l })));
 
+  const start = total === 0 ? 0 : offset + 1;
+  const end = Math.min(offset + limit, total);
+
   return h("section", { className: "card" },
     h("div", { className: "card-header" },
       h("h2", null, "Pipeline"),
@@ -534,7 +637,14 @@ function LeadList({ leads, query, setQuery, sort, setSort, onRefresh, loading, e
         h(Icon.refresh), " Refresh"
       )
     ),
-    body
+    body,
+    h("div", { className: "pager" },
+      h("div", { className: "pager-meta" }, `Showing ${start}-${end} of ${total}`),
+      h("div", { className: "pager-controls" },
+        h("button", { className: "btn ghost", onClick: onPrev, disabled: loading || offset <= 0 }, "Previous"),
+        h("button", { className: "btn ghost", onClick: onNext, disabled: loading || (offset + limit) >= total }, "Next")
+      )
+    )
   );
 }
 
@@ -545,25 +655,31 @@ function App() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("score");
   const [toast, setToast] = useState(null);
+  const [limit] = useState(20);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
 
   const notify = useCallback((msg, error = false) => {
     setToast({ msg, error });
     setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextOffset = 0) => {
+    setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/leads");
+      const r = await fetch(`/leads?limit=${limit}&offset=${nextOffset}`);
       if (!r.ok) throw new Error("HTTP " + r.status);
       const data = await r.json();
       const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
       setLeads(items.map(normalizeLead).filter(Boolean));
+      setTotal(data?.total ?? items.length);
+      setOffset(nextOffset);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
-  }, []);
+  }, [limit]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(0); }, [load]);
 
   const stats = useMemo(() => {
     const total = leads.length;
@@ -601,8 +717,22 @@ function App() {
       ),
 
       h("div", { className: "grid" },
-        h(LeadForm, { onCreated: load, notify }),
-        h(LeadList, { leads, query, setQuery, sort, setSort, onRefresh: load, loading, error })
+        h(LeadForm, { onCreated: () => load(0), notify }),
+        h(LeadList, {
+          leads,
+          query,
+          setQuery,
+          sort,
+          setSort,
+          onRefresh: () => load(offset),
+          loading,
+          error,
+          total,
+          limit,
+          offset,
+          onPrev: () => load(Math.max(0, offset - limit)),
+          onNext: () => load(offset + limit),
+        })
       ),
 
       h("footer", null,
