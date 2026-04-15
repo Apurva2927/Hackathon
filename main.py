@@ -1,8 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from database import engine, get_db, Base
 from models import Lead
 from llm import score_lead_with_llm
+import os
 
 # Create tables on startup
 Base.metadata.create_all(bind=engine)
@@ -12,6 +15,13 @@ app = FastAPI(
     description="AI-powered lead scoring agent – Bug Slayers (Apurva Gunjal, Kunal Singh)",
     version="1.0.0",
 )
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 @app.post("/leads")
